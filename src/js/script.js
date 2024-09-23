@@ -9,11 +9,15 @@ class Vector2 {
     }
 
     add(vec) {
-        return Vector2(this.x + vec.x, this.y + vec.y);
+        return new Vector2(this.x + vec.x, this.y + vec.y);
     }
 
-    sub(vec) {
-        return Vector2(this.x - vec.x, this.y - vec.y);
+    multiply(vec) {
+        return new Vector2(this.x * vec.x, this.y * vec.y);
+    }
+
+    scale(scale) {
+        return new Vector2(this.x * scale, this.y * scale);
     }
 
     mag(vec) {
@@ -22,6 +26,17 @@ class Vector2 {
 
     angle(vec) {
         return Math.atan2(vec.y - this.y, vec.x - this.x);
+    }
+
+    delta(vec) {
+        return new Vector2(vec.x - this.x, vec.y - this.y);
+    }
+
+    normalize() {
+        let a = Math.hypot(this.x, this.y);
+        let b = this.x / a;
+        let c = this.y / a;
+        return new Vector2(b, c);
     }
 }
 
@@ -68,21 +83,25 @@ class Segment {
         this.p1 = new Vector2(this.p2.x - this.measure * Math.cos(this.angle), this.p2.y - this.measure * Math.sin(this.angle));
     }
 
-    toRight(radius) {
-        return new Vector2(radius * Math.cos(this.angle + Math.PI / 2), radius * Math.sin(this.angle + Math.PI / 2));
+    toRight() {
+        let delta = this.p1.delta(this.p2);
+        let normal = delta.normalize();
+        return new Vector2(normal.y, -normal.x);
     }
 
-    toLeft(radius) {
-        return new Vector2(radius * Math.cos(this.angle - Math.PI / 2), radius * Math.sin(this.angle - Math.PI / 2));
+    toLeft() {
+        let delta = this.p1.delta(this.p2);
+        let normal = delta.normalize();
+        return new Vector2(-normal.y, normal.x);
     }
 
     draw() {
-        let rightCorner = this.toRight(this.radius),
-            leftCorner = this.toLeft(this.radius),
-            pr1 = new Vector2(this.p1.x + rightCorner.x, this.p1.y + rightCorner.y),
-            pr2 = new Vector2(this.p2.x + rightCorner.x, this.p2.y + rightCorner.y),
-            pl1 = new Vector2(this.p1.x + leftCorner.x, this.p1.y + leftCorner.y),
-            pl2 = new Vector2(this.p2.x + leftCorner.x, this.p2.y + leftCorner.y);
+        let rightCorner = this.toRight().scale(this.radius),
+            leftCorner = this.toLeft().scale(this.radius),
+            pr1 = rightCorner.add(this.p1)
+        pr2 = rightCorner.add(this.p2)
+        pl1 = leftCorner.add(this.p1)
+        pl2 = leftCorner.add(this.p2)
 
         screen.strokeStyle = "#77777780";
         screen.lineWidth = 1;
@@ -110,23 +129,26 @@ class Spine {
     constructor(x, y, measure, segments, angle, thickness, color, fixed = false) {
         this.x = x;
         this.y = y;
-        this.measure = measure;
+        this.segmentLength = measure;
         this.segments = segments;
         this.angle = angle;
         this.thickness = thickness;
         this.fixed = fixed;
         this.color = color
 
-        this.spine = [];
-        this.radius = [];
-        this.positions = [];
-        this.segmentLength = Math.round(this.measure / this.segments);
+        // this.spine = [];
+        // this.radius = [];
+        // this.positions = [];
+        this.spineLength = this.segmentLength * this.segments;
 
         this.makeSpine();
+        this.makeRadius();
         this.getPositions();
     }
 
     makeSpine() {
+        this.spine = [];
+
         let tx = this.x,
             ty = this.y;
 
@@ -135,26 +157,68 @@ class Spine {
             tx = segment.p2.x;
             ty = segment.p2.y;
             this.spine.push(segment);
-            this.radius.push((Math.sin((i / (this.segments - 1)) * Math.PI) * (this.measure * 0.013)) + 2);
         }
         this.getPositions();
+    }
+
+    makeRadius() {
+        this.radius = [];
+        for (let i = 0; i <= this.segments; i++) {
+            this.radius.push((Math.sin((i / (this.segments - 1)) * Math.PI) * (this.spineLength * 0.013)) + 2)
+        }
+    }
+
+    angleLimit(thisSegment, nextSegment, radius) {
+        let angleLimit = Math.PI / Math.max((radius ** 1.4 / this.segmentLength), 4);
+
+        let angle = nextSegment.angle - thisSegment.angle;
+
+
+        if (angle < -Math.PI) {
+            angle += 2 * Math.PI;
+        } else if (angle > Math.PI) {
+            angle -= 2 * Math.PI;
+        }
+
+        if (angle < -angleLimit || angle > angleLimit) {
+            let limit = angle > 0 ? angleLimit : - angleLimit;
+            nextSegment.angle = thisSegment.angle + limit
+
+            if (nextSegment.angle < -Math.PI) {
+                nextSegment.angle += 2 * Math.PI;
+            } else if (nextSegment.angle > Math.PI) {
+                nextSegment.angle -= 2 * Math.PI;
+            }
+
+            nextSegment.p1 = thisSegment.p2;
+            nextSegment.calcPoint2();
+        }
     }
 
     setPosition(x, y) {
         let tx = x,
             ty = y;
 
-        for (let i = 0; i < this.spine.length; i++) {
-            let segment = this.spine[i];
-            segment.setPos(tx, ty);
-            tx = segment.p2.x;
-            ty = segment.p2.y;
+        for (let i = 0; i < this.segments; i++) {
+            let thisSegment = this.spine[i];
+            thisSegment.setPos(tx, ty);
+
+            if (i < this.segments - 1) {
+                let nextSegment = this.spine[i + 1];
+                nextSegment.setPos(thisSegment.p2.x, thisSegment.p2.y);
+
+                this.angleLimit(thisSegment, nextSegment, this.radius[i]);
+            }
+
+            tx = thisSegment.p2.x;
+            ty = thisSegment.p2.y;
         }
 
         if (this.fixed) {
             tx = this.x;
             ty = this.y;
-            let i = this.spine.length; while (i--) {
+            let i = this.segments;
+            while (i--) {
                 let segment = this.spine[i];
                 segment.setInvertPos(tx, ty);
                 tx = segment.p1.x;
@@ -171,11 +235,46 @@ class Spine {
     }
 
     draw() {
-        for (let i = 0; i < this.spine.length; i++) {
-            let segment = this.spine[i];
-            segment.radius = this.radius[i];
-            segment.draw();
+        let points = [];
+
+        for (let i = 0; i < this.segments; i++) {
+
+            let thisSegment = this.spine[i];
+            let thisRadius = this.radius[i];
+            let nextRadius = this.radius[i + 1];
+
+            let p1 = thisSegment.toLeft().scale(thisRadius).add(thisSegment.p1);
+            let p2 = thisSegment.toRight().scale(thisRadius).add(thisSegment.p1);
+            let p3 = thisSegment.toRight().scale(nextRadius).add(thisSegment.p2);
+            let p4 = thisSegment.toLeft().scale(nextRadius).add(thisSegment.p2);
+
+            if (i == 0) {
+                points.push(p1, p2, p3, p4, p1);
+            } else {
+                points.splice(i + 2, 0, p3, p4);
+            }
         }
+
+        screen.strokeStyle = "#ffff00ff";
+        screen.fillStyle = "#ff0000ff";
+        screen.lineWidth = 2;
+
+        screen.beginPath();
+        screen.moveTo(points[0].x, points[0].y);
+
+        points.forEach(point => {
+            screen.lineTo(point.x, point.y);
+        });
+
+        screen.closePath();
+        screen.fill();
+        screen.stroke();
+
+        // for (let i = 0; i < this.spine.length; i++) {
+        //     let segment = this.spine[i];
+        //     segment.radius = this.radius[i];
+        //     segment.draw();
+        // }
     }
 }
 
@@ -189,7 +288,7 @@ class MainIK {
         this.title = "Inverse Kinematics Constrain";
         this.instruction = "Key <F> fixes the end."
         this.fixed = false;
-        this.spine = new Spine(this.x, this.y, 320, 32, 0, 2, "yellow", this.fixed);
+        this.spine = new Spine(this.x, this.y, 10, 32, 0, 2, "yellow", this.fixed);
 
         screen.canvas.width = this.width;
         screen.canvas.height = this.height;
