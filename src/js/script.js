@@ -1,7 +1,6 @@
 const canvas = document.getElementById("canvas");
 const screen = canvas.getContext("2d");
 
-
 class Vector2 {
     constructor(x, y) {
         this.x = x;
@@ -234,6 +233,28 @@ class Spine {
         })
     }
 
+    addSegment() {
+        let lastSegment = this.spine[this.segments - 1];
+        let newSegment = new Segment(lastSegment.p2.x, lastSegment.p2.y, this.segmentLength, lastSegment.angle, this.thickness, this.color);
+        this.spine.push(newSegment);
+        this.segments += 1;
+        this.spineLength = this.segmentLength * this.segments;
+        this.makeRadius();
+        this.getPositions();
+    }
+
+    removeSegment() {
+        if (this.segments == 4) {
+            return;
+        }
+
+        this.spine.pop();
+        this.segments -= 1;
+        this.spineLength = this.segmentLength * this.segments;
+        this.makeRadius();
+        this.getPositions();
+    }
+
     draw() {
         let points = [];
 
@@ -287,6 +308,7 @@ class MainIK {
         this.fps = 60;
         this.title = "Inverse Kinematics Constrain";
         this.instruction = "Key <F> fixes the end."
+        this.instruction2 = "Key <I> Add new segment and <O> Remove last segment."
         this.fixed = false;
         this.spine = new Spine(this.x, this.y, 10, 32, 0, 2, "yellow", this.fixed);
 
@@ -320,6 +342,15 @@ class MainIK {
         if (event.key == "f" || event.key == "F") {
             this.fixed = this.fixed == true ? false : true;
         }
+
+        if (event.key == "i" || event.key == "I") {
+            this.spine.addSegment();
+        }
+
+        if (event.key == "o" || event.key == "O") {
+            this.spine.removeSegment();
+        }
+
         this.spine.fixed = this.fixed;
     }
 
@@ -352,6 +383,7 @@ class MainIK {
         screen.baseLine = "middle";
         screen.fillText(this.title, this.width / 2, 20);
         screen.fillText(this.instruction, this.width / 2, 40);
+        screen.fillText(this.instruction2, this.width / 2, 60);
 
         this.spine.setPosition(this.x, this.y);
         this.spine.draw();
